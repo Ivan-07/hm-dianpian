@@ -8,8 +8,8 @@ import com.baomidou.mybatisplus.core.mapper.BaseMapper;
  *  Mapper 接口
  * </p>
  *
- * @author 虎哥
- * @since 2021-12-22
+ * @author ivan
+ * @since 2022-12-16
  */
 public interface VoucherOrderMapper extends BaseMapper<VoucherOrder> {
 
