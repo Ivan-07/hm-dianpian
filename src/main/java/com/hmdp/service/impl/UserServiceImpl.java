@@ -85,7 +85,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
         String key = RedisConstants.LOGIN_USER_KEY+token;
         stringRedisTemplate.opsForHash().putAll(key, BeanUtil.beanToMap(BeanUtil.copyProperties(user, UserDTO.class), new HashMap<>(),
                 CopyOptions.create().setIgnoreNullValue(false).setFieldValueEditor((fieldName, fieldValue)->fieldValue.toString())));
-        stringRedisTemplate.expire(token, RedisConstants.LOGIN_USER_TTL, TimeUnit.MINUTES);
+        stringRedisTemplate.expire(key, RedisConstants.LOGIN_USER_TTL, TimeUnit.MINUTES);
         return Result.ok(token);
     }
 }
