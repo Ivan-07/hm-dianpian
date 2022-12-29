@@ -45,7 +45,12 @@ public class CacheClient {
         String key = keyPrefix + id;
         String json = stringRedisTemplate.opsForValue().get(key);
         if (StringUtils.isNotBlank(json)) {
-            return JSONUtil.toBean(json, type);
+            R r = JSONUtil.toBean(json, type);
+            return r;
+        }
+        // 查询到为空值，表示不存在，直接返回
+        if (json != null) {
+            return null;
         }
         R r = dbCallback.apply(id);
         if (r == null) {
