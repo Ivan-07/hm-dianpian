@@ -17,6 +17,7 @@ import com.hmdp.utils.RegexUtils;
 import com.hmdp.utils.SystemConstants;
 import com.hmdp.utils.UserHolder;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.redis.connection.BitFieldSubCommands;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
@@ -26,6 +27,7 @@ import javax.servlet.http.HttpSession;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
@@ -53,7 +55,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
         // 2. 生成验证码
         String code = RandomUtil.randomNumbers(6);
         // 3. 保存验证码
-        stringRedisTemplate.opsForValue().set(RedisConstants.LOGIN_CODE_KEY+phone, code, RedisConstants.LOGIN_CODE_TTL, TimeUnit.MINUTES);
+        stringRedisTemplate.opsForValue().set(RedisConstants.LOGIN_CODE_KEY + phone, code, RedisConstants.LOGIN_CODE_TTL, TimeUnit.MINUTES);
 
         // 4. 发送验证码
         log.debug("发送短信验证码成功， 验证码为：{}", code);
@@ -64,12 +66,12 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
     public Result login(LoginFormDTO loginForm, HttpSession session) {
         // 1. 校验手机号
         String phone = loginForm.getPhone();
-        if (phone==null || RegexUtils.isPhoneInvalid(phone)) {
+        if (phone == null || RegexUtils.isPhoneInvalid(phone)) {
             return Result.fail("手机号格式不正确！");
         }
         // 2. 校验验证码
         String code = loginForm.getCode();
-        String cachedCode = stringRedisTemplate.opsForValue().get(RedisConstants.LOGIN_CODE_KEY+phone);
+        String cachedCode = stringRedisTemplate.opsForValue().get(RedisConstants.LOGIN_CODE_KEY + phone);
         if (cachedCode == null) {
             return Result.fail("验证码已失效");
         }
@@ -82,15 +84,15 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
         if (user == null) {
             user = new User();
             user.setPhone(phone);
-            String nickName = SystemConstants.USER_NICK_NAME_PREFIX+RandomUtil.randomString(5);
+            String nickName = SystemConstants.USER_NICK_NAME_PREFIX + RandomUtil.randomString(5);
             user.setNickName(nickName);
             save(user);
         }
         // 5. 保存用户到redis中
         String token = UUID.randomUUID().toString();
-        String key = RedisConstants.LOGIN_USER_KEY+token;
+        String key = RedisConstants.LOGIN_USER_KEY + token;
         stringRedisTemplate.opsForHash().putAll(key, BeanUtil.beanToMap(BeanUtil.copyProperties(user, UserDTO.class), new HashMap<>(),
-                CopyOptions.create().setIgnoreNullValue(false).setFieldValueEditor((fieldName, fieldValue)->fieldValue.toString())));
+                CopyOptions.create().setIgnoreNullValue(false).setFieldValueEditor((fieldName, fieldValue) -> fieldValue.toString())));
         stringRedisTemplate.expire(key, RedisConstants.LOGIN_USER_TTL, TimeUnit.MINUTES);
         return Result.ok(token);
     }
@@ -117,10 +119,45 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
         LocalDateTime now = LocalDateTime.now();
         String keySuffix = now.format(DateTimeFormatter.ofPattern("yyyyMM"));
         // 3. 拼接key
-        String key = RedisConstants.USER_SIGN_KEY+userId+":"+keySuffix;
+        String key = RedisConstants.USER_SIGN_KEY + userId + ":" + keySuffix;
         // 4. 写入redis
         int dayOfMonth = now.getDayOfMonth();
-        stringRedisTemplate.opsForValue().setBit(key, dayOfMonth-1, true);
+        stringRedisTemplate.opsForValue().setBit(key, dayOfMonth - 1, true);
         return Result.ok();
+    }
+
+    @Override
+    public Result signCount() {
+        // 1. 获取当前登陆用户
+        Long userId = UserHolder.getUser().getId();
+        // 2. 获取日期
+        LocalDateTime now = LocalDateTime.now();
+        String keySuffix = now.format(DateTimeFormatter.ofPattern("yyyyMM"));
+        // 3. 拼接key
+        String key = RedisConstants.USER_SIGN_KEY + userId + ":" + keySuffix;
+        // 4. 获得截止今天签到结果
+        int dayOfMonth = now.getDayOfMonth();
+        List<Long> result = stringRedisTemplate.opsForValue().bitField(
+                key,
+                BitFieldSubCommands.create()
+                        .get(BitFieldSubCommands.BitFieldType.unsigned(dayOfMonth)).valueAt(0));
+        if (result == null || result.isEmpty()) {
+            return Result.ok(0);
+        }
+        Long num = result.get(0);
+        if (num == null || num < 0) {
+            return Result.ok(0);
+        }
+        // 计算连续签到天数
+        int count = 0;
+        while (true) {
+            if ((num & 1) == 0) {
+                break;
+            }else {
+                count++;
+            }
+            num >>>= 1;
+        }
+        return Result.ok(count);
     }
 }
