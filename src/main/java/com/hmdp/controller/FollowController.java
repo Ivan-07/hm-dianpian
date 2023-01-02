@@ -37,4 +37,6 @@ public class FollowController {
         return followService.queryCommonFollow(id);
     }
 
+
+
 }
